@@ -173,23 +173,25 @@ class NextcloudSyncService implements SyncProvider {
       );
       remoteFiles.sort((left, right) => left.relativePath.compareTo(right.relativePath));
 
+      final pendingDownloads = <_RemoteImage>[];
+      for (final remoteFile in remoteFiles) {
+        final localFile = File('${localDir.path}/${remoteFile.relativePath}');
+        if (!await localFile.exists()) {
+          pendingDownloads.add(remoteFile);
+        }
+      }
+
       final remoteRelativePaths = remoteFiles
           .map((remoteFile) => remoteFile.relativePath)
           .toSet();
 
-      for (final remoteFile in remoteFiles) {
+      for (var index = 0; index < pendingDownloads.length; index++) {
+        final remoteFile = pendingDownloads[index];
         final localFile = File('${localDir.path}/${remoteFile.relativePath}');
 
-        bool needsDownload = false;
-        if (!await localFile.exists()) {
-          needsDownload = true;
-        }
-
-        if (!needsDownload) {
-          continue;
-        }
-
-        _log.info('Downloading ${remoteFile.relativePath}...');
+        _log.info(
+          'Downloading ${index + 1}/${pendingDownloads.length}...',
+        );
 
         await localFile.parent.create(recursive: true);
         final partFile = File('${localFile.path}.part');

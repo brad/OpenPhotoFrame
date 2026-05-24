@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 import 'package:open_photo_frame/domain/interfaces/storage_provider.dart';
 import 'package:open_photo_frame/infrastructure/services/nextcloud_remote_client.dart';
 import 'package:open_photo_frame/infrastructure/services/nextcloud_source_config.dart';
@@ -232,6 +233,66 @@ void main() {
         );
       expect(await rootFile.lastModified(), modifiedAt);
     });
+
+      test('sync logs download progress counts for pending files only', () async {
+        final existingFile = File('${tempDir.path}/already-here.jpg');
+        await existingFile.writeAsString('existing');
+
+        final client = FakeNextcloudRemoteClient(
+          directories: {
+            '/': const [
+              NextcloudRemoteEntry(
+                path: '/already-here.jpg',
+                name: 'already-here.jpg',
+                isDirectory: false,
+              ),
+              NextcloudRemoteEntry(
+                path: '/first.jpg',
+                name: 'first.jpg',
+                isDirectory: false,
+              ),
+              NextcloudRemoteEntry(
+                path: '/second.jpg',
+                name: 'second.jpg',
+                isDirectory: false,
+              ),
+            ],
+          },
+        );
+
+        final service = NextcloudSyncService.fromPublicLink(
+          'https://cloud.example.com/s/abc123',
+          storageProvider,
+          clientFactory: ({
+            required String webDavUrl,
+            required String user,
+            required String password,
+          }) => client,
+        );
+
+        final recordedMessages = <String>[];
+        Logger.root.level = Level.ALL;
+        final subscription = Logger.root.onRecord.listen((record) {
+          if (record.loggerName == 'NextcloudSyncService') {
+            recordedMessages.add(record.message);
+          }
+        });
+
+        try {
+          await service.sync();
+        } finally {
+          await subscription.cancel();
+        }
+
+        expect(client.downloadedPaths, ['/first.jpg', '/second.jpg']);
+        expect(
+          recordedMessages,
+          containsAllInOrder([
+            'Downloading 1/2...',
+            'Downloading 2/2...',
+          ]),
+        );
+      });
 
     test('sync only downloads images from selected folders', () async {
       final client = FakeNextcloudRemoteClient(
