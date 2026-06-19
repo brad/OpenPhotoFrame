@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -35,7 +35,7 @@ typedef UpdatePromptCallback = void Function(UpdateInfo info);
 /// Checks at most once per [_checkInterval], compares against the installed
 /// version, and either installs silently (Device Owner + opt-in) or asks the
 /// UI to prompt the user. Not included in Play Store builds.
-class UpdateService extends ChangeNotifier {
+class UpdateService extends ChangeNotifier with WidgetsBindingObserver {
   UpdateService({
     required ConfigProvider configProvider,
     Dio? dio,
@@ -44,7 +44,13 @@ class UpdateService extends ChangeNotifier {
 
   static const _owner = 'micw';
   static const _repo = 'OpenPhotoFrame';
+
+  /// Periodic fallback interval while the app keeps running.
   static const _checkInterval = Duration(hours: 8);
+
+  /// Minimum gap between opportunistic checks (app start / resume) so frequent
+  /// restarts or wake-ups don't hammer GitHub.
+  static const _minCheckGap = Duration(hours: 4);
 
   final ConfigProvider _config;
   final Dio _dio;
@@ -65,25 +71,35 @@ class UpdateService extends ChangeNotifier {
   void start() {
     if (!Platform.isAndroid) return;
     _timer?.cancel();
-    _timer = Timer.periodic(_checkInterval, (_) => _maybeCheck());
-    unawaited(_maybeCheck(initial: true));
+    // 8h periodic fallback while the app stays alive.
+    _timer = Timer.periodic(_checkInterval, (_) => checkForUpdate());
+    // Check on every resume (e.g. the frame waking from its night schedule),
+    // and once at startup.
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_maybeCheckOpportunistic());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> _maybeCheck({bool initial = false}) async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_maybeCheckOpportunistic());
+    }
+  }
+
+  /// A check triggered by app start or resume, throttled to at most once per
+  /// [_minCheckGap] so restarts/wake-ups don't check too often.
+  Future<void> _maybeCheckOpportunistic() async {
     if (!_config.autoUpdateEnabled) return;
-    // Respect the 8h window across app restarts: skip the startup check if we
-    // already checked recently.
-    if (initial) {
-      final last = _config.autoUpdateLastCheck;
-      if (last != null && DateTime.now().difference(last) < _checkInterval) {
-        return;
-      }
+    final last = _config.autoUpdateLastCheck;
+    if (last != null && DateTime.now().difference(last) < _minCheckGap) {
+      return;
     }
     await checkForUpdate();
   }
