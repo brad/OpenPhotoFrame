@@ -44,28 +44,26 @@ jobs:
         run: |
           if [[ -z "$APK_SIGNING_KEY" ]]; then
             echo "::error::APK_SIGNING_KEY secret is not set"
-            exit 1
+          else
+            if [[ -z "$APK_SIGNING_CERTIFICATE" ]]; then
+              echo "::error::APK_SIGNING_CERTIFICATE variable is not set"
+            else
+              # Write the private key and certificate
+              echo "$APK_SIGNING_KEY" > /tmp/signing-key.pem
+              echo "$APK_SIGNING_CERTIFICATE" > /tmp/signing-cert.pem
+
+              # Create PKCS12 keystore
+              openssl pkcs12 -export -inkey /tmp/signing-key.pem -in /tmp/signing-cert.pem \
+                -out /tmp/keystore.p12 -name "release" -passout pass:android
+
+              # Create key.properties for Gradle
+              cat > android/key.properties << EOG
+              storePassword=android
+              keyPassword=android
+              keyAlias=release
+              storeFile=/tmp/keystore.p12
+            fi
           fi
-          if [[ -z "$APK_SIGNING_CERTIFICATE" ]]; then
-            echo "::error::APK_SIGNING_CERTIFICATE variable is not set"
-            exit 1
-          fi
-          
-          # Write the private key and certificate
-          echo "$APK_SIGNING_KEY" > /tmp/signing-key.pem
-          echo "$APK_SIGNING_CERTIFICATE" > /tmp/signing-cert.pem
-          
-          # Create PKCS12 keystore
-          openssl pkcs12 -export -inkey /tmp/signing-key.pem -in /tmp/signing-cert.pem \
-            -out /tmp/keystore.p12 -name "release" -passout pass:android
-          
-          # Create key.properties for Gradle
-          cat > android/key.properties << EOF
-          storePassword=android
-          keyPassword=android
-          keyAlias=release
-          storeFile=/tmp/keystore.p12
-          EOF
 
       - name: Build Release APK
         run: flutter build apk --release --split-per-abi
@@ -147,15 +145,14 @@ jobs:
               console.log('No dev-latest release to delete');
             }
 
-      - name: Update dev-latest pre-release (on master or develop push)
-        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop'
+      - name: Update dev-latest pre-release (on master push)
+        if: github.ref == 'refs/heads/master'
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
             const apkDir = process.env.APK_DIR;
-            const apkPattern = process.env.APK_PATTERN;
             
             // Find all APK files matching the pattern
             const allFiles = fs.readdirSync(apkDir);
@@ -202,6 +199,77 @@ jobs:
               release = newRelease.data;
             }
             
+            // Upload all APK files
+            for (const apkName of apkFiles) {
+              const apkPath = path.join(apkDir, apkName);
+              const content = fs.readFileSync(apkPath);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.id,
+                name: apkName,
+                data: content
+              });
+              console.log(`Uploaded ${apkName}`);
+            }
+
+      - name: Update nightly pre-release (on develop push)
+        if: github.ref == 'refs/heads/develop'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const apkDir = process.env.APK_DIR;
+
+            const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+            const tagName = `nightly-${date}`;
+
+            // Find all APK files matching the pattern
+            const allFiles = fs.readdirSync(apkDir);
+            const apkFiles = allFiles.filter(f => f.startsWith('OpenPhotoFrame-') && f.endsWith('.apk'));
+
+            // Try to get existing release
+            let release;
+            try {
+              release = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tagName
+              });
+
+              // Delete existing assets
+              for (const asset of release.data.assets) {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: asset.id
+                });
+              }
+
+              // Update release body
+              await github.rest.repos.updateRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.data.id,
+                body: `Nightly development build from develop branch.\n\nCommit: ${context.sha}\nBuilt: ${new Date().toISOString()}\n\n⚠️ This is an unstable development build. Use at your own risk.`
+              });
+
+              release = release.data;
+            } catch (e) {
+              // Create new release
+              const newRelease = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tagName,
+                target_commitish: context.sha,
+                name: `Nightly Build (${date})`,
+                body: `Nightly development build from develop branch.\n\nCommit: ${context.sha}\nBuilt: ${new Date().toISOString()}\n\n⚠️ This is an unstable development build. Use at your own risk.`,
+                prerelease: true
+              });
+              release = newRelease.data;
+            }
+
             // Upload all APK files
             for (const apkName of apkFiles) {
               const apkPath = path.join(apkDir, apkName);
