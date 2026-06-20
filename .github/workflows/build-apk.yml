@@ -62,7 +62,6 @@ jobs:
               keyPassword=android
               keyAlias=release
               storeFile=/tmp/keystore.p12
-EOG
             fi
           fi
 
