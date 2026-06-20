@@ -44,27 +44,28 @@ jobs:
         run: |
           if [[ -z "$APK_SIGNING_KEY" ]]; then
             echo "::error::APK_SIGNING_KEY secret is not set"
-          else
-            if [[ -z "$APK_SIGNING_CERTIFICATE" ]]; then
-              echo "::error::APK_SIGNING_CERTIFICATE variable is not set"
-            else
-              # Write the private key and certificate
-              echo "$APK_SIGNING_KEY" > /tmp/signing-key.pem
-              echo "$APK_SIGNING_CERTIFICATE" > /tmp/signing-cert.pem
-
-              # Create PKCS12 keystore
-              openssl pkcs12 -export -inkey /tmp/signing-key.pem -in /tmp/signing-cert.pem \
-                -out /tmp/keystore.p12 -name "release" -passout pass:android
-
-              # Create key.properties for Gradle
-              cat > android/key.properties << 'EOG'
-storePassword=android
-keyPassword=android
-keyAlias=release
-storeFile=/tmp/keystore.p12
-EOG
-            fi
+            exit 1
           fi
+          if [[ -z "$APK_SIGNING_CERTIFICATE" ]]; then
+            echo "::error::APK_SIGNING_CERTIFICATE variable is not set"
+            exit 1
+          fi
+
+          # Write the private key and certificate
+          echo "$APK_SIGNING_KEY" > /tmp/signing-key.pem
+          echo "$APK_SIGNING_CERTIFICATE" > /tmp/signing-cert.pem
+          
+          # Create PKCS12 keystore
+          openssl pkcs12 -export -inkey /tmp/signing-key.pem -in /tmp/signing-cert.pem \
+            -out /tmp/keystore.p12 -name "release" -passout pass:android
+          
+          # Create key.properties for Gradle
+          cat > android/key.properties << EOF
+          storePassword=android
+          keyPassword=android
+          keyAlias=release
+          storeFile=/tmp/keystore.p12
+          EOF
 
       - name: Build Release APK
         run: flutter build apk --release --split-per-abi
