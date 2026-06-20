@@ -57,12 +57,12 @@ jobs:
                 -out /tmp/keystore.p12 -name "release" -passout pass:android
 
               # Create key.properties for Gradle
-              cat > android/key.properties << EOG
-              storePassword=android
-              keyPassword=android
-              keyAlias=release
-              storeFile=/tmp/keystore.p12
-              EOG
+              cat > android/key.properties << 'EOG'
+storePassword=android
+keyPassword=android
+keyAlias=release
+storeFile=/tmp/keystore.p12
+EOG
             fi
           fi
 
