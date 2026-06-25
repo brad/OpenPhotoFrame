@@ -12,6 +12,7 @@ class PhotoFrameDreamService : DreamService() {
 
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra("is_dream", true)
         }
         startActivity(intent)
         finish()
