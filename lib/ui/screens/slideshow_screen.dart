@@ -443,7 +443,13 @@ class _SlideshowScreenState extends State<SlideshowScreen> with TickerProviderSt
 
   Future<void> _checkDreamMode() async {
     final isDream = await NativeScreenControlService.isDreamMode();
-    if (mounted) setState(() => _isDreamMode = isDream);
+    if (mounted) {
+      setState(() => _isDreamMode = isDream);
+      if (isDream) {
+        // If we are in dream mode, ensure we are showing the slideshow (root route)
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    }
   }
 
   void _openSettings() {
