@@ -53,6 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   late bool _showClock;
   late String _clockSize;
   late String _clockPosition;
+  late bool _useAmPm;
   
   // Photo info settings
   late bool _showPhotoInfo;
@@ -129,6 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     _showClock = config.showClock;
     _clockSize = config.clockSize;
     _clockPosition = config.clockPosition;
+    _useAmPm = config.useAmPm;
     
     // Photo info settings
     _showPhotoInfo = config.showPhotoInfo;
@@ -285,6 +287,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     config.showClock = _showClock;
     config.clockSize = _clockSize;
     config.clockPosition = _clockPosition;
+    config.useAmPm = _useAmPm;
     
     // Photo info settings
     config.showPhotoInfo = _showPhotoInfo;
@@ -421,6 +424,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             _buildClockSizeSelector(),
             const SizedBox(height: 8),
             _buildClockPositionSelector(),
+            const SizedBox(height: 16),
+            SwitchListTile(
+              title: Text(AppLocalizations.of(context)!.useAmPm),
+              subtitle: Text(AppLocalizations.of(context)!.useAmPmSubtitle),
+              secondary: const Icon(Icons.more_time),
+              value: _useAmPm,
+              onChanged: (value) {
+                setState(() => _useAmPm = value);
+              },
+            ),
           ],
           
           const SizedBox(height: 24),
